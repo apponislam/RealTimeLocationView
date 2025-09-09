@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Realtime Device Tracking</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            #map {
+                height: 100vh;
+                width: 100%;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="map"></div>
+
+        <script src="/socket.io/socket.io.js"></script>
+        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+        <script>
+            const socket = io();
+            const map = L.map("map").setView([23.8103, 90.4125], 12);
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                attribution: "&copy; OpenStreetMap contributors",
+            }).addTo(map);
+
+            const markers = {};
+            const deviceId = "Device-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+
+            // Listen for all locations
+            socket.on("locations", (devices) => {
+                // Remove markers for disconnected devices
+                Object.keys(markers).forEach((id) => {
+                    if (!devices[id]) {
+                        map.removeLayer(markers[id]);
+                        delete markers[id];
+                    }
+                });
+
+                // Add/update markers
+                Object.keys(devices).forEach((id) => {
+                    const { lat, lng } = devices[id];
+                    if (!markers[id]) {
+                        markers[id] = L.marker([lat, lng]).addTo(map).bindPopup(`Device: ${id}`);
+                    } else {
+                        markers[id].setLatLng([lat, lng]);
+                    }
+                });
+            });
+
+            // Send real device location
+            function sendLocation() {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const { latitude, longitude } = position.coords;
+                            socket.emit("updateLocation", {
+                                deviceId,
+                                lat: latitude,
+                                lng: longitude,
+                            });
+                        },
+                        (error) => {
+                            console.error("Error getting location:", error);
+                        },
+                        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+                    );
+                } else {
+                    alert("Geolocation not supported by your browser");
+                }
+            }
+
+            // Send location every 2 seconds
+            setInterval(sendLocation, 2000);
+        </script>
+    </body>
+</html>
